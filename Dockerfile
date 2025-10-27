@@ -40,7 +40,7 @@ COPY requirements.txt .
 
 RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
-RUN pip install --no-cache-dir numpy==1.21.6
+RUN pip install --no-cache-dir numpy==1.19.5
 
 RUN pip install --no-cache-dir \
     matplotlib==2.1.1 \
