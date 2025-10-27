@@ -1,0 +1,45 @@
+name: Run SPMiner Decoder on Cisco Dataset
+
+on:
+  push:
+    branches: [main]  # Runs when you push to main
+
+jobs:
+  run-decoder:
+    runs-on: ubuntu-latest  # Uses Linux server with good memory (up to 7GB free)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4  # Downloads your repo
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.8'  # Use Python 3.8 (compatible with deps)
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  # Installs PyTorch, PyTorch Geometric, DeepSNAP, etc.
+          pip install torch-geometric  # Extra if not in requirements.txt
+
+      - name: Download Cisco Dataset
+        run: |
+          wget https://snap.stanford.edu/data/CiscoSecureWorkload_22_networks.zip -O cisco.zip
+          mkdir -p data/cisco
+          unzip cisco.zip -d data/cisco
+
+      - name: Run Decoder on Cisco Dataset
+        run: python3 -m subgraph_mining.decoder --dataset=cisco --node_anchored
+
+      - name: Analyze Results (Count Patterns)
+        run: python3 -m analyze.count_patterns --dataset=cisco --out_path=results/counts.json --node_anchored
+
+      - name: Analyze Pattern Counts
+        run: python3 -m analyze.analyze_pattern_counts --counts_path=results/
+
+      - name: Upload Results as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spminer-results
+          path: results/  # Downloads results folder with JSON, patterns
