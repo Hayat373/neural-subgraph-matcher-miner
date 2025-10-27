@@ -22,13 +22,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # ---- Install pip for Python 3.8 ----
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py \
+RUN curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py -o get-pip.py \
     && python3.8 get-pip.py \
     && rm get-pip.py
 
 # ---- Make python / pip default ----
-RUN ln -sf /usr/bin/python3.8 /usr/bin/python && ln -sf /usr/local/bin/pip /usr/bin/pip
+RUN ln -sf /usr/bin/python3.8 /usr/bin/python && \
+    ln -sf /usr/local/bin/pip /usr/bin/pip
 
+    
 WORKDIR /app
 COPY requirements.txt .
 
