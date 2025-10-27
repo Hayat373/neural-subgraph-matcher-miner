@@ -25,9 +25,10 @@ RUN apt-get update && apt-get install -y \
     python3-scipy \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl https://bootstrap.pypa.io/pip/3.8/get-pip.py -o get-pip.py \
-    && python3.8 get-pip.py && \
+RUN curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py -o get-pip.py \
+    && python3.8 get-pip.py \
     && rm get-pip.py
+
 
 # Make python & pip default to Python 3.8
 RUN ln -sf /usr/bin/python3.8 /usr/bin/python && \
