@@ -2,7 +2,7 @@ name: Run Decoder
 
 on:
   push:
-    branches: [main]
+    branches: [main]  # or [cisco-fix] if that’s your working branch
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -10,15 +10,16 @@ on:
 jobs:
   run-decoder:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Cache Docker layers
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-buildx-${{ github.sha }}
@@ -26,15 +27,13 @@ jobs:
             ${{ runner.os }}-buildx-
 
       - name: Build Docker image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6
         with:
           context: .
           load: true
           tags: decoder-image:latest
-          cache-from: |
-            type=local,src=/tmp/.buildx-cache
-          cache-to: |
-            type=local,dest=/tmp/.buildx-cache-new,mode=max
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
       - name: Move cache
         run: |
@@ -43,22 +42,15 @@ jobs:
 
       - name: Create output directories
         run: |
-          mkdir -p ${{ github.workspace }}/plots/cluster
           mkdir -p ${{ github.workspace }}/results
-          chmod -R 777 ${{ github.workspace }}/plots
           chmod -R 777 ${{ github.workspace }}/results
 
-      - name: Check available processors and usage percentage
-        id: cpu-check
+      - name: Download Cisco Dataset
         run: |
-          TOTAL_CPUS=$(nproc)
-          USED_CPUS=4
-          PERCENT_USED=$(( 100 * USED_CPUS / TOTAL_CPUS ))
-          echo "Total available processors: $TOTAL_CPUS"
-          echo "Processors used for decoder: $USED_CPUS"
-          echo "Percent of processors used: ${PERCENT_USED}%"
-          echo "total_cpus=$TOTAL_CPUS" >> $GITHUB_OUTPUT
-          echo "percent_used=$PERCENT_USED" >> $GITHUB_OUTPUT
+          wget https://snap.stanford.edu/data/cisco-secure-workload.zip -O cisco.zip || wget https://snap.stanford.edu/data/CiscoSecureWorkload_22_networks.zip -O cisco.zip
+          mkdir -p data/cisco
+          unzip cisco.zip -d data/cisco
+          ls -la data/cisco/
 
       - name: Run decoder in Docker container
         run: |
@@ -68,37 +60,18 @@ jobs:
             decoder-image:latest \
             bash -c "
               set -e
-              echo 'Starting decoder run...'
+              echo 'Starting decoder run on Cisco dataset...'
               python -m subgraph_mining.decoder \
-                --dataset=directed.pkl \
-                --n_trials=200 \
+                --dataset=cisco \
                 --node_anchored \
-                --out_path=/app/results/patterns.pkl \
-                --graph_type=directed
-              echo 'Checking output directories...'
-              ls -la /app/plots/cluster
+                --min_pattern_size=3 \
+                --max_pattern_size=5 \
+                --out_path=/app/results/patterns.pkl
+              echo 'Decoder completed. Listing output...'
               ls -la /app/results
-              "
-      # - name: Run pattern counter in Docker container
-      #   run: |
-      #     docker run --rm \
-      #       -v ${{ github.workspace }}:/app \
-      #       -e PYTHONUNBUFFERED=1 \
-      #       decoder-image:latest \
-      #       bash -c "
-      #         set -e
-      #         export PYTHONPATH=/app
-      #         echo 'Running pattern counter...'
-      #         python -m analyze.count_patterns \
-      #           --dataset=graph.pkl \
-      #           --queries_path=results/patterns.pkl \
-      #           --out_path=results/ \
-      #           --node_anchored \
-      #           --preserve_labels
-      #         echo 'Counting completed.'
-      #         ls -la /app/results
-      #       "
-      - name: Run matcher in Docker container
+            "
+
+      - name: Run pattern counter in Docker container
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/app \
@@ -106,41 +79,45 @@ jobs:
             decoder-image:latest \
             bash -c "
               set -e
-              echo 'Starting matcher run on custom gene graph...'
-              python -m subgraph_matching.train \
-                --dataset=graph \
-                --graph_pkl_path=graph.pkl \
-                --node_anchored \
-                --batch_size 16 \
-                --val_size 128
-              echo 'Checking output directories...'
+              export PYTHONPATH=/app
+              echo 'Running pattern counter...'
+              python -m analyze.count_patterns \
+                --dataset=cisco \
+                --queries_path=/app/results/patterns.pkl \
+                --out_path=/app/results/counts.json \
+                --node_anchored
+              echo 'Counting completed.'
               ls -la /app/results
-              ls -la /app/plots
             "
+
+      - name: Run pattern analysis in Docker container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -e PYTHONUNBUFFERED=1 \
+            decoder-image:latest \
+            bash -c "
+              set -e
+              export PYTHONPATH=/app
+              echo 'Running pattern analysis...'
+              python -m analyze.analyze_pattern_counts \
+                --counts_path=/app/results/
+              echo 'Analysis completed.'
+              ls -la /app/results
+            "
+
       - name: Check for generated files
         run: |
-          echo "Checking plots directory:"
-          ls -R plots/ || echo "No plots directory found"
           echo "Checking results directory:"
           ls -R results/ || echo "No results directory found"
 
-      - name: Upload plots as artifact
+      - name: Upload results as artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: decoder-plots
+          name: spminer-results
           path: |
-            plots/
             results/
+            data/cisco/
           retention-days: 7
           if-no-files-found: warn
-
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: decoder-logs
-          path: |
-            *.log
-            *.err
-          if-no-files-found: ignore
