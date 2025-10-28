@@ -3,11 +3,10 @@ FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 
-# ---- System dependencies ----
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    curl \
-    git \
+# ---- System deps ----
+RUN apt-get update && apt-get install -y software-properties-common curl git \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y \
     build-essential \
     python3.8 \
     python3.8-dev \
@@ -20,6 +19,7 @@ RUN apt-get update && apt-get install -y \
     liblapack-dev \
     libatlas-base-dev \
     && rm -rf /var/lib/apt/lists/*
+
 
 # ---- Install pip for Python 3.8 ----
 RUN curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py -o get-pip.py \
